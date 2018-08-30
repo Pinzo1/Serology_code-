@@ -1,33 +1,61 @@
 #####################################################################
+#####################################################################
+##                                                                 ##
+## CODE FOR FITTING MODELS TO CROSS-SECTIONAL ANTIBODY TITRE DATA  ##
+##                                                                 ##
+## Please feel free to share modify the code as you see fit        ##   
+## (but please maintain appropriate accreditation)                 ##
+##                                                                 ##   
+## Michael White                                                   ##
+## Imperial College Lonodon                                        ##
+## m.white08@imperial.ac.uk                                        ##
+##                                                                 ##
+#####################################################################
+#####################################################################
 rm(list=ls())
-
-setwd("")
 
 ## call the libraries that are needed for analysis
 
 library(MASS)
 library(compiler)
 library(binom)
+library(deSolve)
+
+
+###############################################
+###############################################
+##          ##                               ##
+##   ####   ##  ####    ####  ######  ####   ##
+##  ##  ##  ##  ## ##  ##  ##   ##   ##  ##  ##
+##  ##  ##  ##  ##  ## ######   ##   ######  ##
+##  ##  ##  ##  ## ##  ##  ##   ##   ##  ##  ##
+##   ####   ##  ####   ##  ##   ##   ##  ##  ##
+##          ##                               ##
+###############################################
+###############################################
  
+###############################################
+## 0.1 Read in data
 
-data <- read.csv(".csv", header = TRUE)					 ## call in the csv datafile that needs to be analysed 
-
-head(data)						 						 ## check that the data has been read in correctly 
-
-
-data <- data[data$province == "",]						 ## if there are multiple study sites in the data set subdivide them
+setwd("")
 
 
+data <- read.csv("", header = TRUE)			## call in the csv datafile that needs to be analysed
+
+head(data)									## check that the data has been read in correctly
+
+data <- data[data$province == "	",]			## if there are multiple study sites in the data set subdivide them
 
 
-PGP3_pre_bin <- rep(NA, (dim(data)[1]-1))				 ## define an empty vector to store whether someone is sero-pos or not
+PGP3_pre_bin <- rep(NA, (dim(data)[1]-1))	## define an empty vector to store whether someone is sero-pos or not
 
 
-PGP3_cut <- 0.80										 ## specify the cut-off vlaue which defines people as +ve or -ve
+PGP3_cut <- 0.80							## specify the cut-off vlaue which defines people as +ve or -ve
 
-for(i in 1:nrow(data))									 ## loop through the data to fill in the vector to define people as +ve or -ve
+
+for(i in 1:nrow(data))
 {
-	if(data$OD[i] > PGP3_cut)
+	if(data$OD[i] > PGP3_cut)				## loop through the data to fill in the vector to define people as +ve or -ve
 	{
 		PGP3_pre_bin[i] <- 1
 	}else{
@@ -38,7 +66,7 @@ for(i in 1:nrow(data))									 ## loop through the data to fill in the vector t
 
 
 
-Kin_pre_binned <- cbind(data$age, PGP3_pre_bin)			 ## make a dataframe of all individuals age and sero-status for analysis 
+Kin_pre_binned <- cbind(data$age, PGP3_pre_bin)			## make a dataframe of all individuals age and sero-status for analysis 
 
 
 
@@ -47,34 +75,35 @@ colnames(Kin_pre_binned)[2] <- "PGP3_bin"
 
 colnames(Kin_pre_binned) 
 
-AB_data <- Kin_pre_binned								## assign the object to a new name that will be evalauated by the function  
 
+N_data <- nrow(Kin_pre_binned)
 
+AB_data <- Kin_pre_binned							   ## assign the object to a new name that will be evalauated by the function 
 
 ###############################################
-## 0.2 bin the data by age group to plot
-				
+## 0.2 Prepare data for plotting
 
-age_bins <- c(0, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90)							## age bins will be set from the youngest age group 
-age_bins_mid <- 0.5*( age_bins[1:(length(age_bins)-1)] + age_bins[2:length(age_bins)] )		## in your data to the maximum age by = user defined
- 
+
+
+
+age_bins <- c(0, 5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90)						## age bins will be set from the youngest age group
+age_bins_mid <- 0.5*( age_bins[1:(length(age_bins)-1)] + age_bins[2:length(age_bins)] ) ## in your data to the maximum age by = user defined
+
  
 N_bins <- length(age_bins) - 1 
 
 
-SP_bins      <- rep(NA, N_bins)
+SP_range_bins <- matrix(NA, nrow=N_bins, ncol=3)										## generate an empty matrix to be filled with sero-prev for each age bin and the binomial CIs
+colnames(SP_range_bins) <- c("med", "low", "high")
 
-SP_range_bins <- matrix(NA, nrow=N_bins, ncol=3)
-colnames(SP_range_bins) <- c("med", "low", "high")						## generate an empty matrix to be filled with sero-prev for each age bin and the binomial CIs
+for(i in 1:N_bins){
 
-for(i in 1:N_bins)
-{
-	index <- intersect( which(Kin_pre_binned[,1]>age_bins[i]), which(Kin_pre_binned[,1]<=age_bins[i+1]) ) 
-	temp  <- Kin_pre_binned[index,2]
+	index <- intersect( which(AB_data[,1]>age_bins[i]), which(AB_data[,1]<=age_bins[i+1]) ) 
+	temp  <- AB_data[index,2]
 
-	SP_bins[i] <- sum(Kin_pre_binned[index,2])/length(index)
-
-	SP_range_bins[i,] <- qbinom( c(0.5,0.025,0.975), size=length(index), prob=sum(Kin_pre_binned[index,2])/length(index) )/length(index)
+	SP_range_bins[i,] <- as.numeric(as.vector(
+            	                	 binom.confint( sum(AB_data[index,2]), length(index), method="wilson")[1,4:6]
+            	                ))
 }
 
 
@@ -83,7 +112,7 @@ for(i in 1:N_bins)
  
 par(mfrow=c(1,1))
 
-plot(x=age_bins_mid, y=SP_bins, 
+plot(x=age_bins_mid, y=SP_range_bins[,1], 
 pch=15, cex=2,
 xlim=c(0,90), ylim=c(0,1),
 xlab="age (years)", ylab="Proportion seropositive", 
@@ -96,7 +125,6 @@ for(i in 1:N_bins)
              x1=age_bins_mid[i], y1=SP_range_bins[i,3], 
              length=0.03, angle=90, code=3, col="black", lwd=1)	
 }
-
 
 
 
@@ -113,86 +141,141 @@ for(i in 1:N_bins)
 ###################################################
 
 
+time_0  = 20   ## time when lambda = lambda_0 (i.e. 20 years ago)
+age_max = 90   ## maximum age in population
+age_SD  = 18   ## age of sexual debut
+
 ################################################### 
-## 1.1 specificy the serological model which may
-## have generated our sero-prev data 
+## 1.1 MODEL   
 
-par_MC <- c(5, 0.1, 0.01, 10)  ## (lambda_0, gamma, rho, time_c)
+par_MC <- c(0.1, 0.5, 0.05)  ## (lambda_0, gamma, rho, lambda_STI)
 
 
-model_M2 <- function(a, par)
+#######################################
+## Simulates sero-positivity for time t
+## from 0 to age_CS
+
+rho = 0.02611204 			## specify the fixed value of the SRR
+
+
+
+model_M3_ode = function(t, x, par_ode)
 {
-	lambda_0 <- par[1]
-	gamma    <- par[2]
-	rho      <- par[3] 
-	time_c   <- par[4]
+	with(as.list(par_ode),{
+      
+	lambda_0   = par_ode[1]
+	gamma      = par_ode[2]
+	lambda_STI = par_ode[3]
+      age_CS     = par_ode[4]
+      
+	lambda_c = gamma*lambda_0
 
-	lambda_c <- gamma*lambda_0
 
-	age_xx  <- a - time_c 
- 
-	if( age_xx<=0 ){
-		SP_prop <- ( lambda_c/(lambda_c+rho) )*( 1 - exp(-(lambda_c+rho)*a) )
+	#####################################
+      ## Declare variables
+
+	dP_t = 0
+	P_t = x[1]
+
+
+	#########################################
+	## Differential equations
+
+	lambda = ((lambda_0-lambda_c)/time_0)*(age_CS-t) + lambda_c
+
+	if( t > age_SD )
+	{
+		lambda = lambda + lambda_STI
 	}
 
-	if( (age_xx>0) && (age_xx<a) ){
-		SP_prop <- lambda_c/(lambda_c+rho) + 
-			( (lambda_0-lambda_c)*rho/( (lambda_0+rho)*(lambda_c+rho) ) )*exp( -(lambda_c+rho)*(a-age_xx) ) -
-			( lambda_0/(lambda_0+rho) )*exp( -(lambda_c+rho)*a )*exp( -(lambda_0-lambda_c)*age_xx )
-	}
+	dP_t = lambda*(1-P_t) - rho*P_t
 
-	if( a <= age_xx ){
-		SP_prop <- ( lambda_0/(lambda_0+rho) )*( 1 - exp(-(lambda_0+rho)*a) )
-	} 
-	
-	
-	for(k in 1:length(SP_prop))
- 	{
- 	
- 	if(SP_prop[k] > 0.9999999){
- 		SP_prop[k] = 0.9999990
- 	}
- 	
- }
+	#####################################
+	## Return output in list format
 
+	list( c(dP_t))
 
-	SP_prop
+	})
 }
+
+model_M3_ode <- cmpfun(model_M3_ode, options=list(optimize=3)) 
+
+
+#######################################
+## Simulates sero-positivity for age at cross-section (age_CS)
+## ranging from 0 to 60
+
+age_seq = seq(from=0, to=age_max, by=1)
+N_age = length(age_seq)	
+
+model_M3_call = function( par_M3 )
+{
+	P_a = rep(NA, N_age)
+
+	for(k in 1:length(P_a))
+	{
+		if( age_seq[k]==0 )
+		{ 
+ 			P_a[k] = 0 
+		}else{
+
+			ystart = c(0)
+			ode_a = seq(from=0, to=age_seq[k], by=0.1)
+
+			par_M3_age = c(par_M3, age_seq[k])
+
+			model_M3.sim = as.data.frame(lsoda(y=ystart, times=ode_a, func=model_M3_ode, parm=par_M3_age))
+
+			P_a[k] = model_M3.sim[nrow(model_M3.sim),2]
+		}
+	}
+
+	P_a
+}
+
+model_M3_call <- cmpfun(model_M3_call, options=list(optimize=3)) 
 
 
 ###################################################
 ## 1.2 calculate the likelihood of the paramater set
-## using a binomial likelihhod
-## 
+## using a binomial likelihood
  
-loglike_M1 <- function( par )
-{
-	lambda_0 <- par[1]
-	gamma    <- par[2]
-	rho      <- par[3] 
-	time_c   <- par[4]
+loglike_M3 = function( par_M3 )
+{ 
+	P_model = model_M3_call( par_M3 )
 
-	SP_model <- sapply(Kin_pre_binned[,1], model_M2, par=par)
+	#if( 0%in%P_model )
+	#{
+	#	P_model = P_model[-which(P_model==0)]
+	#}
 
-	mu <- log(SP_model) 
+	loglike = 0
 
-	loglike <- Kin_pre_binned[,2]*log(SP_model) + (1-Kin_pre_binned[,2])*log(1-SP_model)
+	for( i in 1:N_data )
+	{
+		P_a = P_model[which(age_seq==AB_data[i,1])]
 
-      sum( loglike )
+		loglike = loglike + (1-AB_data[i,2])*log( 1 - P_a ) + AB_data[i,2]*log( P_a )
+	}
+
+	loglike
 }
 
+loglike_M3 <- cmpfun(loglike_M3, options=list(optimize=3)) 
 
 
 ###################################################
 ## 1.3 Define the priors for each estimated parameter
 ## we currently define uniform priors for all parameters
  
-prior_M1 <- function( par ){
- 
-	lambda_0 <- par[1]
-	gamma    <- par[2]
-	rho      <- par[3] 
-	time_c   <- par[4]
+LARGE = 1e10     ## Large value for rejecting parameters with prior
+
+prior_M3 <- function( par_M3 )
+{ 
+	lambda_0   <- par_M3[1]
+	gamma      <- par_M3[2]
+      #rho        <- par_M3[3]
+      lambda_STI <- par_M3[3]
 
 
 	######################################
@@ -200,9 +283,9 @@ prior_M1 <- function( par ){
 
 	if( lambda_0>0 && lambda_0<10 )
 	{
-		prior_lambda_0 <- 1/10
+		prior_lambda_0 <- log(1/10)
 	}else{
-		prior_lambda_0 <- -1e6
+		prior_lambda_0 <- -LARGE
 	}
 
 	######################################
@@ -210,37 +293,28 @@ prior_M1 <- function( par ){
 
 	if( gamma>0 && gamma<1 )
 	{
-		prior_gamma <- 1/1
+		prior_gamma <- log(1/1)
 	}else{
-		prior_gamma <- -1e6
+		prior_gamma <- -LARGE
 	}
+
 
 	######################################
-	## Uniform prior on rho ~ U(0,10)
+	## Uniform prior on lambda_STI ~ U(0,10)
 
-	if( rho>0 && rho<10 )
+	if( lambda_STI>0 && lambda_STI<10 )
 	{
-		prior_rho <- log(1/10)
+		prior_lambda_STI <- log(1/10)
 	}else{
-		prior_rho <- -LARGE
+		prior_lambda_STI <- -LARGE
 	}
 
-	######################################
-	## Uniform prior on time_c ~ U(0,60)
-
-	if( time_c>0 && time_c<50 )
-	{
-		prior_time_c <- 1/50
-	}else{
-		prior_time_c <- -1e6
-	}
-
-
-
-	prior <- prior_lambda_0 + prior_rho + prior_gamma +  prior_time_c
+	prior <- prior_lambda_0 + prior_gamma + prior_lambda_STI 
 
 	prior
 }
+
+prior_M3 <- cmpfun(prior_M3, options=list(optimize=3)) 
 
 
 #################################################
@@ -256,20 +330,23 @@ prior_M1 <- function( par ){
 #################################################
 
 
-N_mcmc       <- 50000      ## Number of MCMC iterations
+N_mcmc       <- 2000       ## Number of MCMC iterations
+N_tune_start <- 200        ## Start of adaptive tuning of covariance matrix of MVN proposals
+N_tune_end   <- 700        ## End of adaptive tuning of covariance matrix of MVN proposals
+N_adapt      <- 1000       ## End of adaptive scaling of proposal size with rm_scale in 2.1
 
-N_adapt      <- 5000
+step_scale  <- 1           ## Scaler for step size
+MCMC_accept <- 0           ## Track the MCMC acceptance rate
+
+max_corr    <- 0.75        ## Maximum degree of correlation
+
 
 #################################################
 ## 2.1 Robbins-munro step scaler
 
 
-step_scale  <- 1
-MCMC_accept <- 0
-
-
-rm_scale <- function(step_scale, mc, log_prob){
-
+rm_scale <- function(step_scale, mc, log_prob)
+{
 	dd <- exp(log_prob)
 	if( dd < -30 ){ dd <- 0 }
 	dd <- min( dd, 1 )
@@ -284,31 +361,26 @@ rm_scale <- function(step_scale, mc, log_prob){
 }
 
 
-
 #################################################
-## 2.2 Prepare object to store MCMC fitting output
+## 2.2 Prepare object for MCMC fitting
  
-MCMC_par           <- matrix(NA, nrow=N_mcmc, ncol=6)
-colnames(MCMC_par) <- c("lambda_0", "gamma","rho", "time_c", "loglike", "prior")
+MCMC_par           <- matrix(NA, nrow=N_mcmc, ncol=5)
+colnames(MCMC_par) <- c("lambda_0", "gamma", "lambda_STI", "loglike","prior")
 
  
 #########################################################
 ## 2.3 Implement MCMC iterations
 
 
-par_MC <- c(0.2, 0.1,0.01, 2)  ## (lambda_0, gamma, rho, time_c)
-
-Sigma_MC <- diag( c(0.01, 0.01,0.001, 2) )
+par_MC <- c(0.2, 0.1,  0.03)  ## (lambda_0, gamma, rho, lambda_STI)
 
 
-## For Sigma_MC Ideally fill in your existing best guess
-## based on the estimated posterior from a previous burn-in.
-## The most important thing is to make sure that things are
-## approximately the correct order of magnitude.
+Sigma_MC <- diag( (0.25*par_MC)^2 )      ## Initial guess of covariance of MVN proposal dist
 
 
 
-loglike_MC <- loglike_M1( par_MC ) + prior_M1( par_MC )
+
+loglike_MC <- loglike_M3( par_MC ) + prior_M3( par_MC )
 
 
 
@@ -317,17 +389,9 @@ for(mc in 1:N_mcmc)
 	par_MCp1 <- mvrnorm(n=1, mu=par_MC, Sigma=step_scale*Sigma_MC)
 
  
-	if( par_MCp1[1] > 0 &&
-	    par_MCp1[2] > 0 &&
-	    par_MCp1[2] < 1 &&
-	    par_MCp1[3] > 0 &&
-	    par_MCp1[4] > 0 &&
-	    par_MCp1[4] < 50  ){
+	if( prior_M3(par_MCp1) > -0.5*LARGE ){
  
-		loglike_MCp1_data <- loglike_M1( par_MCp1 ) 
-		
-		loglike_MCp1 <- loglike_MCp1_data + prior_M1( par_MCp1 )
-
+		loglike_MCp1 <- loglike_M3( par_MCp1 ) + prior_M3( par_MCp1 )
 
 		log_prob = min( loglike_MCp1-loglike_MC, 0 )           
                    
@@ -339,18 +403,49 @@ for(mc in 1:N_mcmc)
 			MCMC_accept <- MCMC_accept + 1                       
 		}
 
-		if( mc < N_adapt ){
+		#######################################
+		## RM scaling of proposal step size
+
+		if( mc < N_adapt )
+		{
 			step_scale <- rm_scale( step_scale, mc, log_prob)
 		}
 
-		
+		#######################################
+		## Adaptive tuning of covariance matrix
+
+		if( (mc > N_tune_start) && (mc < N_tune_end) )
+		{
+			cov_MC <- cov( MCMC_par[1:(mc-1),1:3] )
+
+			###########################
+			## Checks for tuning
+
+			if( min(diag(cov_MC)) > 1e-6 )
+			{
+				###########################
+				## Check for high degree of correlation
+
+				sd_MC_inv <- 1/sqrt(diag(cov_MC))
+
+				corr_MC <- t(t(cov_MC*sd_MC_inv)*sd_MC_inv)
+
+				corr_MC[intersect( which( corr_MC > max_corr ), which(corr_MC<0.99999) )] <- max_corr
+				corr_MC[  which( corr_MC < -max_corr )] <- -max_corr
+
+				t(t(corr_MC*(1/sd_MC_inv))*(1/sd_MC_inv))
+ 
+				Sigma_MC <- cov_MC
+			}
+		}
 	}
 
-	MCMC_par[mc,1:4] <- par_MC					## store the output parameter values from each MCMC realisation 
-	MCMC_par[mc,5]   <- loglike_MC				## return the associated loglikelihood
-	MCMC_par[mc,6]   <- prior_M1( par_MC )		## return the prior
+	MCMC_par[mc,1:3] <- par_MC				## store the output parameter values from each MCMC realisation
+	MCMC_par[mc,4]   <- loglike_MC			## return the associated loglikelihood
+	MCMC_par[mc,5]   <- prior_M3( par_MC )	## return the prior
 
 }
+
 
 
 
@@ -358,13 +453,12 @@ for(mc in 1:N_mcmc)
 ## 2.4 Examine MCMC chains
  
 
-
 par(mfrow=c(2,3))
 
 
 
 #####################################
-## PANEL 1: alpha_0 MCMC chain
+## PANEL 1: lambda_0 MCMC chain
 
 plot(x=1:N_mcmc, y=MCMC_par[,1], 
 pch=19, col="grey", cex=0.25,
@@ -393,28 +487,13 @@ xlab="MCMC iteration", ylab="rho",
 main="rho")
 
 
-
 #####################################
-## PANEL 4: time_c MCMC chain
+## PANEL 4: lambda_STI MCMC chain
 
 plot(x=1:N_mcmc, y=MCMC_par[,4], 
 pch=19, col="grey", cex=0.25,
-xlab="MCMC iteration", ylab="time_c", 
-main="time_c" )
-
-
-
-#####################################
-## PANEL 5: likelihood
-
-plot(x=1:N_mcmc, y=MCMC_par[,5], 
-pch=19, col="grey", cex=0.25,
 xlab="MCMC iteration", ylab="likelihood", 
-main="likelihood" )
-
-
-
-
+main="likelihood")
 
 
 
@@ -429,7 +508,6 @@ par(mfrow=c(2,2))
 
 #####################################
 ## PANEL 1: lambda_0 MCMC posterior
-
 
 DEN <- density( MCMC_burn[,1] )
 	
@@ -496,6 +574,8 @@ polygon( x=c( DEN$x[high_index], rev(DEN$x[high_index]) ),
 points(x=rep(QUANT[2],2), y=c(0,max(DEN$y)), type='l', lty="dashed", lwd=2)
 
 
+
+
 #####################################
 ## PANEL 3: rho MCMC posterior
 
@@ -530,19 +610,17 @@ points(x=rep(QUANT[2],2), y=c(0,max(DEN$y)), type='l', lty="dashed", lwd=2)
 
 
 
-
 #####################################
-## PANEL 4: time_c MCMC posterior
-
+## PANEL 4: lambda_STI MCMC posterior
 
 DEN <- density( MCMC_burn[,4] )
 	
 QUANT <- quantile( MCMC_burn[,4], prob=c(0.025, 0.5, 0.975) )
 
 plot(x=DEN$x, y=DEN$y, type='l',
-xlim=c(0, 60),
-xlab="time_c", ylab="", 
-main="posterior: time_c" )
+xlim=c(0, max(DEN$x)),
+xlab="lambda_STI", ylab="", 
+main="posterior: lambda_STI" )
 
 	
 low_index  <- which(DEN$x<QUANT[1])
@@ -567,7 +645,6 @@ points(x=rep(QUANT[2],2), y=c(0,max(DEN$y)), type='l', lty="dashed", lwd=2)
 
 
 
-
 #############################################
 #############################################
 ##          ##                             ##
@@ -585,12 +662,11 @@ points(x=rep(QUANT[2],2), y=c(0,max(DEN$y)), type='l', lty="dashed", lwd=2)
 ##     calculate model prediction
 
 
-par_median <- apply(X=MCMC_burn[,1:4], MARGIN=2, FUN=median)
+par_median <- apply(X=MCMC_burn[,1:3], MARGIN=2, FUN=median)
 
+age_seq <- seq(from=0, to=age_max, by=1)
 
-age_seq <- seq(from=0, to=90, by=5)
-
-M2_predict <- sapply(age_seq, model_M2, par=par_median)
+M3_predict <- model_M3_call( par_median )
 
 
 
@@ -599,16 +675,14 @@ M2_predict <- sapply(age_seq, model_M2, par=par_median)
 ## 3.1 Plot data and model prediction
  
 
-
-
 par(mfrow=c(1,1))
 
 
-plot(x=age_bins_mid, y=SP_bins, 
+plot(x=age_bins_mid, y=SP_range_bins[,1], 
 pch=15, cex=2,
 xlim=c(0,90), ylim=c(0,1),
 xlab="age (years)", ylab="Proportion seropositive", 
-main="Sero-catalytic Model 2 fit RenBel"  )
+main="Upper River Model 3 fit STI fix SRR - Temotu"  )
 
 
 for(i in 1:N_bins)
@@ -619,11 +693,8 @@ for(i in 1:N_bins)
 }
 
 
-points(x=age_seq, y=M2_predict, 
+points(x=age_seq, y=M3_predict, 
 type='l', lwd=3, col="green")
-
-
-
 
 
 
@@ -644,22 +715,23 @@ type='l', lwd=3, col="green")
 ## We also calacuate the DIC using the median
 ## instead of the mean as orginally done
 
+
 ######################################
 ## Mean of the posterior
 
-theta_bar = apply( X=MCMC_burn[,1:4], FUN=mean, MARGIN=2)
+theta_bar = apply( X=MCMC_burn[,1:3], FUN=mean, MARGIN=2)
 
 
 ######################################
 ## Deviance at mean of the posterior
 
-D_theta_bar = -2*loglike_M1( theta_bar )
+D_theta_bar = -2*loglike_M3( theta_bar )
 
 
 ######################################
 ## Mean deviance (averaged over posterior)
 
-D_bar = -2*mean( MCMC_burn[,5] - MCMC_burn[,6] )
+D_bar = -2*mean( MCMC_burn[,4] - MCMC_burn[,5] )
 
 
 ######################################
@@ -678,19 +750,19 @@ DIC = pD + D_bar
 ######################################
 ## Mean of the posterior
 
-theta_bar = apply( X=MCMC_burn[,1:4], FUN=median, MARGIN=2)
+theta_bar = apply( X=MCMC_burn[,1:3], FUN=median, MARGIN=2)
 
 
 ######################################
 ## Deviance at mean of the posterior
 
-D_theta_bar = -2*loglike_M1( theta_bar )
+D_theta_bar = -2*loglike_M3( theta_bar )
 
 
 ######################################
 ## Mean deviance (averaged over posterior)
 
-D_bar = -2*median( MCMC_burn[,5] - MCMC_burn[,6] )
+D_bar = -2*median( MCMC_burn[,4] - MCMC_burn[,5] )
 
 
 ######################################
@@ -706,15 +778,4 @@ DIC_median = pD + D_bar
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
+ 
